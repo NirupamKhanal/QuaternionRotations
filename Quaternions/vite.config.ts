@@ -7,7 +7,7 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   build: {
-    outDir: 'dist',
+    outDir: 'Quaternions/dist',
     assetsDir: 'assets',
     rollupOptions: {
       input: {
