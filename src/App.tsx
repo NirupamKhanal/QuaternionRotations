@@ -1,10 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Menu, X, Settings2, RotateCcw } from 'lucide-react';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { Menu, X, Settings2, RotateCcw, Box, Circle, Cone as ConeIcon, Cylinder as CylinderIcon } from 'lucide-react';
+
+type ShapeType = 'cube' | 'sphere' | 'cone' | 'cylinder' | 'torus';
 
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  
+  // Shape selection
+  const [eulerShape, setEulerShape] = useState<ShapeType>('cube');
+  const [quaternionShape, setQuaternionShape] = useState<ShapeType>('cube');
   
   // Rotation controls
   const [eulerSpeed, setEulerSpeed] = useState(0.02);
@@ -12,6 +19,23 @@ function App() {
   const [quaternionAxis, setQuaternionAxis] = useState({ x: 1, y: 1, z: 0 });
   const [eulerCenter, setEulerCenter] = useState({ x: 0, y: 0, z: 0 });
   const [quaternionCenter, setQuaternionCenter] = useState({ x: 0, y: 0, z: 0 });
+
+  const createGeometry = (type: ShapeType): THREE.BufferGeometry => {
+    switch (type) {
+      case 'cube':
+        return new THREE.BoxGeometry(2, 2, 2);
+      case 'sphere':
+        return new THREE.SphereGeometry(1, 32, 32);
+      case 'cone':
+        return new THREE.ConeGeometry(1, 2, 32);
+      case 'cylinder':
+        return new THREE.CylinderGeometry(1, 1, 2, 32);
+      case 'torus':
+        return new THREE.TorusGeometry(1, 0.4, 16, 100);
+      default:
+        return new THREE.BoxGeometry(2, 2, 2);
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -33,24 +57,48 @@ function App() {
     camera1.position.z = 5;
     camera2.position.z = 5;
 
-    // Create cubes
-    const geometry = new THREE.BoxGeometry(2, 2, 2);
+    // Set up OrbitControls for both cameras
+    const controls1 = new OrbitControls(camera1, renderer.domElement);
+    const controls2 = new OrbitControls(camera2, renderer.domElement);
     
-    // Euler cube (red)
+    // Configure controls
+    controls1.enableDamping = true;
+    controls2.enableDamping = true;
+    
+    // Restrict controls to left/right viewport
+    controls1.domElement = renderer.domElement;
+    controls2.domElement = renderer.domElement;
+    
+    controls1.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN
+    };
+    controls2.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN
+    };
+
+    // Create shapes
+    const geometryEuler = createGeometry(eulerShape);
+    const geometryQuaternion = createGeometry(quaternionShape);
+    
+    // Euler shape (red)
     const materialEuler = new THREE.MeshPhongMaterial({
       color: 0xff4444,
       flatShading: true,
     });
-    const cubeEuler = new THREE.Mesh(geometry, materialEuler);
-    sceneEuler.add(cubeEuler);
+    const shapeEuler = new THREE.Mesh(geometryEuler, materialEuler);
+    sceneEuler.add(shapeEuler);
 
-    // Quaternion cube (green)
+    // Quaternion shape (green)
     const materialQuaternion = new THREE.MeshPhongMaterial({
       color: 0x44ff44,
       flatShading: true,
     });
-    const cubeQuaternion = new THREE.Mesh(geometry, materialQuaternion);
-    sceneQuaternion.add(cubeQuaternion);
+    const shapeQuaternion = new THREE.Mesh(geometryQuaternion, materialQuaternion);
+    sceneQuaternion.add(shapeQuaternion);
 
     // Add lights to both scenes
     const setupLights = (scene: THREE.Scene) => {
@@ -72,6 +120,16 @@ function App() {
     addAxes(sceneEuler);
     addAxes(sceneQuaternion);
 
+    // Add grid to both scenes
+    const addGrid = (scene: THREE.Scene) => {
+      const gridHelper = new THREE.GridHelper(10, 10);
+      gridHelper.rotation.x = Math.PI / 2;
+      scene.add(gridHelper);
+    };
+
+    addGrid(sceneEuler);
+    addGrid(sceneQuaternion);
+
     // Rotation setup
     const quaternion = new THREE.Quaternion();
 
@@ -79,14 +137,18 @@ function App() {
     function animate() {
       requestAnimationFrame(animate);
 
-      // Update cube positions
-      cubeEuler.position.set(eulerCenter.x, eulerCenter.y, eulerCenter.z);
-      cubeQuaternion.position.set(quaternionCenter.x, quaternionCenter.y, quaternionCenter.z);
+      // Update controls
+      controls1.update();
+      controls2.update();
+
+      // Update shape positions
+      shapeEuler.position.set(eulerCenter.x, eulerCenter.y, eulerCenter.z);
+      shapeQuaternion.position.set(quaternionCenter.x, quaternionCenter.y, quaternionCenter.z);
 
       // Euler rotation
-      cubeEuler.rotation.x += eulerSpeed;
-      cubeEuler.rotation.y += eulerSpeed;
-      cubeEuler.rotation.z += eulerSpeed;
+      shapeEuler.rotation.x += eulerSpeed;
+      shapeEuler.rotation.y += eulerSpeed;
+      shapeEuler.rotation.z += eulerSpeed;
 
       // Quaternion rotation
       const axis = new THREE.Vector3(
@@ -97,7 +159,7 @@ function App() {
       const rotationQuaternion = new THREE.Quaternion();
       rotationQuaternion.setFromAxisAngle(axis, quaternionSpeed);
       quaternion.multiply(rotationQuaternion);
-      cubeQuaternion.quaternion.copy(quaternion);
+      shapeQuaternion.quaternion.copy(quaternion);
 
       // Render both scenes
       renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
@@ -129,12 +191,15 @@ function App() {
     return () => {
       window.removeEventListener('resize', onWindowResize);
       containerRef.current?.removeChild(renderer.domElement);
-      geometry.dispose();
+      geometryEuler.dispose();
+      geometryQuaternion.dispose();
       materialEuler.dispose();
       materialQuaternion.dispose();
       renderer.dispose();
+      controls1.dispose();
+      controls2.dispose();
     };
-  }, [eulerSpeed, quaternionSpeed, quaternionAxis, eulerCenter, quaternionCenter]);
+  }, [eulerSpeed, quaternionSpeed, quaternionAxis, eulerCenter, quaternionCenter, eulerShape, quaternionShape]);
 
   const resetControls = () => {
     setEulerSpeed(0.02);
@@ -143,6 +208,44 @@ function App() {
     setEulerCenter({ x: 0, y: 0, z: 0 });
     setQuaternionCenter({ x: 0, y: 0, z: 0 });
   };
+
+  const ShapeSelector = ({ value, onChange, label }: { value: ShapeType; onChange: (shape: ShapeType) => void; label: string }) => (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          onClick={() => onChange('cube')}
+          className={`flex items-center justify-center p-2 rounded ${value === 'cube' ? 'bg-blue-100' : 'bg-gray-50'}`}
+        >
+          <Box className="w-6 h-6" />
+        </button>
+        <button
+          onClick={() => onChange('sphere')}
+          className={`flex items-center justify-center p-2 rounded ${value === 'sphere' ? 'bg-blue-100' : 'bg-gray-50'}`}
+        >
+          <Circle className="w-6 h-6" />
+        </button>
+        <button
+          onClick={() => onChange('cone')}
+          className={`flex items-center justify-center p-2 rounded ${value === 'cone' ? 'bg-blue-100' : 'bg-gray-50'}`}
+        >
+          <ConeIcon className="w-6 h-6" />
+        </button>
+        <button
+          onClick={() => onChange('cylinder')}
+          className={`flex items-center justify-center p-2 rounded ${value === 'cylinder' ? 'bg-blue-100' : 'bg-gray-50'}`}
+        >
+          <CylinderIcon className="w-6 h-6" />
+        </button>
+        <button
+          onClick={() => onChange('torus')}
+          className={`flex items-center justify-center p-2 rounded ${value === 'torus' ? 'bg-blue-100' : 'bg-gray-50'}`}
+        >
+          <span className="text-xl">◎</span>
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="w-full h-screen" ref={containerRef}>
@@ -164,6 +267,20 @@ function App() {
           <div className="flex items-center gap-2 mb-8">
             <Settings2 className="w-5 h-5" />
             <h2 className="text-xl font-bold">Rotation Controls</h2>
+          </div>
+
+          {/* Shape Selection */}
+          <div className="space-y-6">
+            <ShapeSelector
+              value={eulerShape}
+              onChange={setEulerShape}
+              label="Euler Shape"
+            />
+            <ShapeSelector
+              value={quaternionShape}
+              onChange={setQuaternionShape}
+              label="Quaternion Shape"
+            />
           </div>
 
           {/* Euler Controls */}
@@ -342,6 +459,11 @@ function App() {
           Traditional XYZ rotation<br />
           Shows gimbal lock
         </p>
+        <p className="text-xs text-gray-500 mt-2">
+          Left click: Rotate view<br />
+          Middle click: Zoom<br />
+          Right click: Pan
+        </p>
       </div>
 
       <div className="fixed top-4 right-4 bg-white/80 p-4 rounded-lg shadow-lg">
@@ -349,6 +471,11 @@ function App() {
         <p className="text-sm text-gray-700">
           Custom axis rotation<br />
           Smooth continuous rotation
+        </p>
+        <p className="text-xs text-gray-500 mt-2">
+          Left click: Rotate view<br />
+          Middle click: Zoom<br />
+          Right click: Pan
         </p>
       </div>
     </div>
